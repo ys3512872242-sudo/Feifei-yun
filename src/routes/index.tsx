@@ -1,5 +1,6 @@
 import { Suspense, lazy } from 'react'
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+// 使用 HashRouter 兼容 GitHub Pages 静态托管（避免刷新子路由 404）
+import { createHashRouter, Navigate } from 'react-router-dom'
 import RootLayout from '../layouts/RootLayout'
 
 // 懒加载所有页面
@@ -36,7 +37,7 @@ function SuspenseWrapper({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageLoader />}>{children}</Suspense>
 }
 
-export const router = createBrowserRouter([
+export const router = createHashRouter([
   {
     path: '/',
     element: <RootLayout />,
