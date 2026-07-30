@@ -145,3 +145,109 @@ input, textarea, select {
 .animate-pulse-glow {
   animation: pulse-glow 2s infinite;
 }
+
+/* ========== 塔罗牌 3D 翻转 ========== */
+@keyframes tarot-deal {
+  from {
+    opacity: 0;
+    transform: translateY(-30px) translateX(-20px) rotate(-8deg);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) translateX(0) rotate(0deg);
+  }
+}
+
+@keyframes tarot-reveal {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.tarot-card-3d {
+  perspective: 800px;
+}
+
+.tarot-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  transform-style: preserve-3d;
+}
+
+.tarot-card-inner.is-flipped {
+  transform: rotateY(180deg);
+}
+
+.tarot-card-face-down,
+.tarot-card-face-up {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.tarot-card-face-up {
+  transform: rotateY(180deg);
+}
+
+/* 牌背设计 — 深紫底 + 金色暗纹 */
+.tarot-card-back {
+  background: linear-gradient(145deg, #3d2659 0%, #1f1235 50%, #140a26 100%);
+  border: 1.5px solid #c9944f;
+  box-shadow: inset 0 0 0 1px rgba(201, 148, 79, 0.15);
+}
+
+.tarot-card-back::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 1px solid rgba(201, 148, 79, 0.25);
+  border-radius: calc(var(--radius-lg) - 2px);
+  pointer-events: none;
+}
+
+.tarot-card-back::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle at 50% 50%, rgba(201, 148, 79, 0.12) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* 可选状态：悬浮抬起 */
+.tarot-card-selectable {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (hover: hover) {
+  .tarot-card-selectable:hover {
+    transform: translateY(-10px);
+  }
+}
+
+/* 已选中：抬起 + 半透明 + 发光边框 */
+.tarot-card-selected {
+  transform: translateY(-14px);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.tarot-card-selected .tarot-card-back {
+  border-color: #e6cea3;
+  box-shadow: 0 0 12px rgba(201, 148, 79, 0.3), inset 0 0 0 1px rgba(230, 206, 163, 0.3);
+}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft, RefreshCw } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Sparkles } from 'lucide-react'
 import { useMysticismStore } from '../../features/mysticism/store'
 import { generateId, now } from '../../shared/lib'
 import type { TarotReading, TarotCardResult } from '../../core/types'
@@ -28,53 +28,115 @@ const majorArcana: { id: number; name: string; nameZh: string; upright: string; 
   { id: 18, name: 'The Moon', nameZh: '月亮', upright: '幻觉，恐惧，潜意识，直觉', reversed: '恐惧消散，真相浮现，混乱' },
   { id: 19, name: 'The Sun', nameZh: '太阳', upright: '快乐，成功，活力，清晰', reversed: '暂时的阴霾，过度乐观，延迟' },
   { id: 20, name: 'Judgement', nameZh: '审判', upright: '重生，召唤，觉醒，宽恕', reversed: '逃避召唤，自我评判，遗憾' },
-  { id: 21, name: 'The World', nameZh: '世界', upright: '完成，圆满，成就，旅程', reversed: '未完成��拖延，不完整' },
+  { id: 21, name: 'The World', nameZh: '世界', upright: '完成，圆满，成就，旅程', reversed: '未完成，拖延，不完整' },
 ]
+
+// 卡牌符号（用 Unicode 符号替代图片）
+const cardSymbols: Record<number, string> = {
+  0: '☀', 1: '✦', 2: '☾', 3: '♀', 4: '♂', 5: '⛪', 6: '❤', 7: '⚙',
+  8: '∞', 9: '✧', 10: '☸', 11: '⚖', 12: '✦', 13: '☠', 14: '⚖',
+  15: '♑', 16: '⚡', 17: '✧', 18: '☾', 19: '☀', 20: '☥', 21: '◐',
+}
+
+type Phase = 'setup' | 'selecting' | 'revealed'
+
+interface DeckCard {
+  id: number
+  name: string
+  nameZh: string
+  upright: string
+  reversed: string
+  position: 'upright' | 'reversed'
+}
+
+function createShuffledDeck(): DeckCard[] {
+  const deck: DeckCard[] = majorArcana.map((card) => ({
+    ...card,
+    position: (Math.random() > 0.5 ? 'upright' : 'reversed') as 'upright' | 'reversed',
+  }))
+  // Fisher-Yates 洗牌
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[deck[i], deck[j]] = [deck[j], deck[i]]
+  }
+  return deck
+}
 
 export default function TarotPage() {
   const addTarotReading = useMysticismStore((s) => s.addTarotReading)
   const tarotReadings = useMysticismStore((s) => s.tarotReadings)
+  const [phase, setPhase] = useState<Phase>('setup')
   const [spreadType, setSpreadType] = useState<'single' | 'three-card'>('single')
   const [question, setQuestion] = useState('')
+  const [deck, setDeck] = useState<DeckCard[]>([])
+  const [pickedIndices, setPickedIndices] = useState<number[]>([])
   const [drawnCards, setDrawnCards] = useState<TarotCardResult[] | null>(null)
-  const [isDrawing, setIsDrawing] = useState(false)
+  const [isShuffling, setIsShuffling] = useState(false)
 
-  const drawCards = () => {
-    setIsDrawing(true)
-    const count = spreadType === 'single' ? 1 : 3
-    const positions = spreadType === 'single' ? ['指引'] : ['过去', '现在', '未来']
+  const requiredCount = spreadType === 'single' ? 1 : 3
+  const positions = spreadType === 'single' ? ['指引'] : ['过去', '现在', '未来']
 
+  const startDrawing = () => {
+    setIsShuffling(true)
     setTimeout(() => {
-      const shuffled = [...majorArcana].sort(() => Math.random() - 0.5)
-      const cards: TarotCardResult[] = shuffled.slice(0, count).map((card, i) => ({
+      setDeck(createShuffledDeck())
+      setPickedIndices([])
+      setDrawnCards(null)
+      setPhase('selecting')
+      setIsShuffling(false)
+    }, 800)
+  }
+
+  const pickCard = (index: number) => {
+    if (phase !== 'selecting') return
+    if (pickedIndices.includes(index)) return
+    if (pickedIndices.length >= requiredCount) return
+    setPickedIndices([...pickedIndices, index])
+  }
+
+  const unpickCard = (index: number) => {
+    if (phase !== 'selecting') return
+    setPickedIndices(pickedIndices.filter((i) => i !== index))
+  }
+
+  const revealCards = () => {
+    const cards: TarotCardResult[] = pickedIndices.map((idx, i) => {
+      const card = deck[idx]
+      return {
         cardId: card.id,
         name: card.name,
         nameZh: card.nameZh,
-        position: Math.random() > 0.5 ? 'upright' : 'reversed' as const,
+        position: card.position,
         positionName: positions[i],
-      }))
-
-      setDrawnCards(cards)
-
-      // 生成解读
-      const interpretation = cards.map((c) => {
-        const cardData = majorArcana.find((m) => m.id === c.cardId)!
-        const meaning = c.position === 'upright' ? cardData.upright : cardData.reversed
-        return `${c.positionName} · ${c.nameZh}${c.position === 'reversed' ? '（逆位）' : ''}：${meaning}`
-      }).join('\n\n')
-
-      const reading: TarotReading = {
-        id: generateId(),
-        date: new Date().toISOString().slice(0, 10),
-        spreadType,
-        question: question.trim() || undefined,
-        cards,
-        interpretation,
-        createdAt: now(),
       }
-      addTarotReading(reading)
-      setIsDrawing(false)
-    }, 1500)
+    })
+
+    const interpretation = cards.map((c) => {
+      const cardData = majorArcana.find((m) => m.id === c.cardId)!
+      const meaning = c.position === 'upright' ? cardData.upright : cardData.reversed
+      return `${c.positionName} · ${c.nameZh}${c.position === 'reversed' ? '（逆位）' : ''}：${meaning}`
+    }).join('\n\n')
+
+    const reading: TarotReading = {
+      id: generateId(),
+      date: new Date().toISOString().slice(0, 10),
+      spreadType,
+      question: question.trim() || undefined,
+      cards,
+      interpretation,
+      createdAt: now(),
+    }
+    addTarotReading(reading)
+    setDrawnCards(cards)
+    setPhase('revealed')
+  }
+
+  const reset = () => {
+    setPhase('setup')
+    setDeck([])
+    setPickedIndices([])
+    setDrawnCards(null)
+    setQuestion('')
   }
 
   return (
@@ -86,8 +148,8 @@ export default function TarotPage() {
         <h1 className="text-lg font-semibold text-text-primary">塔罗</h1>
       </div>
 
-      {/* 抽牌区 */}
-      {!drawnCards ? (
+      {/* ========== 阶段一：设置 ========== */}
+      {phase === 'setup' && (
         <>
           {/* 牌阵选择 */}
           <div className="card-paper border border-primary-100 p-4 mb-4">
@@ -95,7 +157,7 @@ export default function TarotPage() {
             <div className="flex gap-2">
               <button
                 onClick={() => setSpreadType('single')}
-                className={`flex-1 p-3 rounded-xl text-center transition-all ${ spreadType === 'single' ? 'bg-purple-50 border border-purple-200 text-purple-700' : 'bg-bg-secondary border border-transparent text-text-secondary' }`}
+                className={`flex-1 p-3 rounded-xl text-center transition-all ${spreadType === 'single' ? 'bg-purple-50 border border-purple-200 text-purple-700' : 'bg-bg-secondary border border-transparent text-text-secondary'}`}
               >
                 <div className="text-2xl mb-1">🃏</div>
                 <p className="text-sm font-medium">单张</p>
@@ -103,7 +165,7 @@ export default function TarotPage() {
               </button>
               <button
                 onClick={() => setSpreadType('three-card')}
-                className={`flex-1 p-3 rounded-xl text-center transition-all ${ spreadType === 'three-card' ? 'bg-purple-50 border border-purple-200 text-purple-700' : 'bg-bg-secondary border border-transparent text-text-secondary' }`}
+                className={`flex-1 p-3 rounded-xl text-center transition-all ${spreadType === 'three-card' ? 'bg-purple-50 border border-purple-200 text-purple-700' : 'bg-bg-secondary border border-transparent text-text-secondary'}`}
               >
                 <div className="text-2xl mb-1">🃏🃏🃏</div>
                 <p className="text-sm font-medium">三张</p>
@@ -125,11 +187,11 @@ export default function TarotPage() {
           </div>
 
           <button
-            onClick={drawCards}
-            disabled={isDrawing}
+            onClick={startDrawing}
+            disabled={isShuffling}
             className="w-full flex items-center justify-center gap-2 py-3.5 bg-purple-500 text-white rounded-xl font-medium text-sm hover:bg-purple-600 disabled:opacity-50 transition-all"
           >
-            {isDrawing ? (
+            {isShuffling ? (
               <>
                 <RefreshCw size={16} className="animate-spin" />
                 洗牌中...
@@ -139,33 +201,168 @@ export default function TarotPage() {
             )}
           </button>
         </>
-      ) : (
-        <>
-          {/* ���牌结果 */}
-          <div className={`grid ${spreadType === 'single' ? 'grid-cols-1 max-w-[180px]' : 'grid-cols-3'} gap-4 mx-auto mb-6`}>
-          {drawnCards.map((card, i) => (
-                <div
-                  key={i}
-                  className={`card-paper border p-4 text-center ${ card.position === 'reversed' ? 'border-orange-200 rotate-180' : 'border-purple-200' }`}
-                >
-                  <div className={card.position === 'reversed' ? 'rotate-180' : ''}>
-                    <div className="text-3xl mb-2">
-                      {card.position === 'reversed' ? '🙃' : '🃏'}
+      )}
+
+      {/* ========== 阶段二：选牌 ========== */}
+      {phase === 'selecting' && (
+        <div className="animate-fade-in">
+          {/* 提示 */}
+          <div className="text-center mb-5">
+            <p className="text-sm text-text-secondary mb-1">
+              {pickedIndices.length < requiredCount
+                ? `请凭直觉选择 ${requiredCount - pickedIndices.length} 张牌`
+                : '已选好，准备翻牌'}
+            </p>
+            <p className="text-xs text-text-muted">
+              已选 {pickedIndices.length} / {requiredCount}
+              {spreadType === 'three-card' && pickedIndices.length > 0 && (
+                <span className="ml-2">
+                  （{pickedIndices.map((_, i) => positions[i]).join(' → ')}）
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* 已选牌位预览 */}
+          {pickedIndices.length > 0 && (
+            <div className={`flex justify-center gap-3 mb-5 ${spreadType === 'single' ? '' : ''}`}>
+              {Array.from({ length: requiredCount }).map((_, slotIdx) => {
+                const pickedIdx = pickedIndices[slotIdx]
+                return (
+                  <div key={slotIdx} className="text-center">
+                    <div
+                      className="w-14 h-20 rounded-lg flex items-center justify-center text-2xl mb-1 transition-all"
+                      style={{
+                        background: pickedIdx !== undefined
+                          ? 'linear-gradient(145deg, #3d2659 0%, #1f1235 50%, #140a26 100%)'
+                          : 'var(--color-bg-secondary)',
+                        border: pickedIdx !== undefined
+                          ? '1.5px solid #c9944f'
+                          : '1.5px dashed var(--color-text-muted)',
+                      }}
+                    >
+                      {pickedIdx !== undefined ? (
+                        <span style={{ color: '#e6cea3' }}>✦</span>
+                      ) : (
+                        <span className="text-text-muted text-xs">{positions[slotIdx]}</span>
+                      )}
                     </div>
-                    <p className="text-sm font-semibold text-text-primary">{card.nameZh}</p>
-                    {card.position === 'reversed' && (
-                      <p className="text-xs text-orange-500 mt-0.5">逆位</p>
-                    )}
-                    <p className="text-xs text-text-muted mt-1">{card.positionName}</p>
+                    <p className="text-xs text-text-muted">{positions[slotIdx]}</p>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
+          {/* 牌阵 — 横向滚动的一排牌 */}
+          <div
+            className="overflow-x-auto pb-4 -mx-4 px-4 mb-5"
+            style={{ scrollbarWidth: 'thin' }}
+          >
+            <div className="flex gap-2.5 pt-4" style={{ minWidth: 'min-content' }}>
+              {deck.map((_, index) => {
+                const isPicked = pickedIndices.includes(index)
+                return (
+                  <div
+                    key={index}
+                    className="tarot-card-3d flex-shrink-0"
+                    style={{
+                      animation: `tarot-deal 0.4s ease-out backwards`,
+                      animationDelay: `${index * 0.03}s`,
+                    }}
+                  >
+                    <div
+                      className={`tarot-card-selectable ${isPicked ? 'tarot-card-selected' : ''}`}
+                      style={{ width: '56px', height: '84px' }}
+                      onClick={() => (isPicked ? unpickCard(index) : pickCard(index))}
+                    >
+                      <div className="tarot-card-inner">
+                        <div className="tarot-card-face-down tarot-card-back">
+                          <span style={{ color: '#c9944f', fontSize: '20px', opacity: 0.7 }}>✦</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          {/* 操作按钮 */}
+          <div className="flex gap-3">
+            <button
+              onClick={() => setPhase('setup')}
+              className="px-4 py-3 text-text-muted text-sm rounded-xl hover:bg-bg-secondary transition-colors"
+            >
+              返回
+            </button>
+            <button
+              onClick={revealCards}
+              disabled={pickedIndices.length < requiredCount}
+              className="flex-1 flex items-center justify-center gap-2 py-3.5 bg-purple-500 text-white rounded-xl font-medium text-sm hover:bg-purple-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+            >
+              <Sparkles size={16} />
+              翻牌揭秘
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========== 阶段三：揭晓 ========== */}
+      {phase === 'revealed' && drawnCards && (
+        <div className="animate-fade-in">
+          {/* 翻开的牌 */}
+          <div className={`grid ${spreadType === 'single' ? 'grid-cols-1 max-w-[160px]' : 'grid-cols-3'} gap-4 mx-auto mb-6`}>
+            {drawnCards.map((card, i) => {
+              const isReversed = card.position === 'reversed'
+              return (
+                <div key={i} className="tarot-card-3d" style={{ animation: `tarot-deal 0.5s ease-out ${i * 0.2}s backwards` }}>
+                  <div style={{ width: '100%', aspectRatio: '2 / 3' }}>
+                    <div className="tarot-card-inner is-flipped">
+                      {/* 牌背（翻过来后朝后） */}
+                      <div className="tarot-card-face-down tarot-card-back">
+                        <span style={{ color: '#c9944f', fontSize: '20px', opacity: 0.7 }}>✦</span>
+                      </div>
+                      {/* 牌面 */}
+                      <div
+                        className="tarot-card-face-up card-paper"
+                        style={{
+                          border: isReversed ? '1.5px solid #d97757' : '1.5px solid #c9944f',
+                          flexDirection: 'column',
+                          padding: '8px',
+                        }}
+                      >
+                        <div
+                          style={{
+                            transform: isReversed ? 'rotate(180deg)' : 'none',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <span style={{ fontSize: '28px', color: '#8f6232' }}>
+                            {cardSymbols[card.cardId] || '✦'}
+                          </span>
+                          <p className="text-sm font-semibold text-text-primary">{card.nameZh}</p>
+                          <p className="text-[10px] text-text-muted">{card.name}</p>
+                          {isReversed && (
+                            <p className="text-xs text-orange-500 mt-0.5">逆位</p>
+                          )}
+                          <p className="text-xs text-text-muted mt-1">{card.positionName}</p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              ))}
+              )
+            })}
           </div>
 
           {/* 解读 */}
           <div className="card-paper border border-primary-100 p-5 mb-6">
             <h3 className="text-sm font-semibold text-text-primary mb-3">🔮 解读</h3>
-            <div className="text-sm text-text-secondary leading-relaxed whitespace-pre-wrap">
+            <div className="text-sm text-text-secondary leading-relaxed">
               {drawnCards.map((c) => {
                 const cardData = majorArcana.find((m) => m.id === c.cardId)!
                 const meaning = c.position === 'upright' ? cardData.upright : cardData.reversed
@@ -181,17 +378,25 @@ export default function TarotPage() {
             </div>
           </div>
 
+          {question.trim() && (
+            <div className="card-paper border border-primary-50 p-4 mb-6">
+              <p className="text-xs text-text-muted mb-1">你的问题</p>
+              <p className="text-sm text-text-secondary italic">"{question.trim()}"</p>
+            </div>
+          )}
+
           <button
-            onClick={() => { setDrawnCards(null); setQuestion('') }}
-            className="w-full py-2.5 text-text-muted text-sm hover:text-text-secondary transition-colors"
+            onClick={reset}
+            className="w-full flex items-center justify-center gap-2 py-2.5 text-text-muted text-sm hover:text-text-secondary transition-colors"
           >
+            <RefreshCw size={14} />
             重新抽牌
           </button>
-        </>
+        </div>
       )}
 
       {/* 历史记录 */}
-      {tarotReadings.length > 0 && (
+      {phase === 'setup' && tarotReadings.length > 0 && (
         <div className="mt-8">
           <h3 className="text-sm font-semibold text-text-primary mb-3">📜 抽牌记录</h3>
           <div className="space-y-2">
